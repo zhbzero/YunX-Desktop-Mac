@@ -939,7 +939,7 @@ private fun levelDescription(level: DbEncryptionLevel, supported: Boolean): Stri
     DbEncryptionLevel.NORMAL ->
         "库明文 · 凭证列加密 · 密钥用本机派生密钥包裹（绑定本机，换机器解不开）"
     DbEncryptionLevel.STRICT ->
-        "库明文 · 凭证列加密 · 密钥用 Windows DPAPI 保护（绑定当前 Windows 用户）"
+        if (supported) "库明文 · 凭证列加密 · 密钥用 Windows DPAPI 保护（绑定当前 Windows 用户）" else "Windows DPAPI 专属档位，macOS 使用普通档保护凭证"
     DbEncryptionLevel.STRICTEST ->
         if (supported) "库整体加密 + DPAPI 保护密钥" else "库整体加密（SQLCipher）—— 暂未支持"
 }

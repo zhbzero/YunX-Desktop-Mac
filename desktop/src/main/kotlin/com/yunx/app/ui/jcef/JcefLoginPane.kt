@@ -352,6 +352,7 @@ fun AutoImportCookieButton(
     onSaved: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    if (!com.yunx.app.util.DesktopPlatform.isWindows) return
     val scope = rememberCoroutineScope()
     var show by remember { mutableStateOf(false) }
     var scanning by remember { mutableStateOf(false) }

@@ -50,10 +50,10 @@ object FfplayManager {
 
     private const val TAG = "YunX-Ffplay"
 
-    private const val EXE_NAME = "ffplay.exe"
+    private val EXE_NAME = "ffplay" + com.yunx.app.util.DesktopPlatform.executableSuffix
 
     /** DASH 合轨用到的可执行文件（与 ffplay 同包，一起解出来） */
-    private const val FFMPEG_EXE = "ffmpeg.exe"
+    private val FFMPEG_EXE = "ffmpeg" + com.yunx.app.util.DesktopPlatform.executableSuffix
 
     /** ffplay 默认 UA 是 `Lavf/...`，很多平台的 CDN 会因此 403，缺省补一个 Chrome UA */
     private const val DEFAULT_UA =
@@ -135,7 +135,11 @@ object FfplayManager {
             add(File(it, "Microsoft/WinGet/Links"))
             add(File(it, "Programs/ffmpeg/bin"))
         }
-        add(File("C:/ffmpeg/bin"))
+        if (isWindows()) add(File("C:/ffmpeg/bin"))
+        if (com.yunx.app.util.DesktopPlatform.isMac) {
+            add(File("/opt/homebrew/bin"))
+            add(File("/usr/local/bin"))
+        }
     }
 
     @Volatile
@@ -158,7 +162,6 @@ object FfplayManager {
      */
     @Synchronized
     fun locate(forceRefresh: Boolean = false): File? {
-        if (!isWindows()) return null
         if (!forceRefresh && checked) return cached
         val found = detectExe(EXE_NAME, privateExe)
         cached = found
@@ -172,7 +175,6 @@ object FfplayManager {
      */
     @Synchronized
     fun locateFfmpeg(forceRefresh: Boolean = false): File? {
-        if (!isWindows()) return null
         if (!forceRefresh && checkedFfmpeg) return cachedFfmpeg
         val found = detectExe(FFMPEG_EXE, privateFfmpeg)
         cachedFfmpeg = found
@@ -233,7 +235,7 @@ object FfplayManager {
      * 依次尝试 [candidates]，全部失败返回最后一个错误；协程取消会原样抛出。
      */
     suspend fun download(onProgress: (Long, Long) -> Unit = { _, _ -> }): Result<File> {
-        if (!isWindows()) return Result.failure(IOException("仅支持 Windows"))
+        if (!isWindows()) return Result.failure(IOException("macOS 请先安装 FFmpeg：brew install ffmpeg；也可使用内置播放器"))
         return withContext(Dispatchers.IO) {
             // OkHttp 的 execute() 是阻塞的、不响应协程取消；用「看门狗」子协程在取消瞬间
             // 把所有在飞 Call 一并 cancel()，否则用户点「取消下载」会毫无反应。
@@ -568,7 +570,6 @@ object FfplayManager {
      * 返回 null 表示拿不到 → 上层降级为独立窗口。
      */
     fun hostWindowHandle(awtWindow: java.awt.Window?): WinDef.HWND? {
-        if (!isWindows()) return null
         if (awtWindow != null) {
             runCatching {
                 val p: Pointer? = Native.getWindowPointer(awtWindow)

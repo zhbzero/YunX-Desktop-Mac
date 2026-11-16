@@ -50,6 +50,14 @@ object SystemProxy {
      * 调用方据此装配全局代理；本函数只读一次注册表。
      */
     fun inspect(): Inspect {
+        if (com.yunx.app.util.DesktopPlatform.isMac) return runCatching {
+            val process = ProcessBuilder("/usr/sbin/scutil", "--proxy").start()
+            if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                return@runCatching Inspect.Unavailable
+            }
+            parseMacProxy(process.inputStream.bufferedReader().readText())
+        }.getOrDefault(Inspect.Unavailable)
         if (!isWindows) {
             Log.i(TAG, "非 Windows 平台，不支持系统代理，按直连处理")
             return Inspect.Unavailable
@@ -59,6 +67,23 @@ object SystemProxy {
         val pac = readString("AutoConfigURL")
         val override = readString("ProxyOverride")
         return parse(enable, server, pac, override)
+    }
+
+    internal fun parseMacProxy(output: String): Inspect {
+        val values = output.lineSequence().mapNotNull { line ->
+            val parts = line.trim().split(" : ", limit = 2)
+            if (parts.size == 2) parts[0] to parts[1].trim() else null
+        }.toMap()
+        if (values["ProxyAutoConfigEnable"] == "1" || values["ProxyAutoDiscoveryEnable"] == "1") {
+            return Inspect.PacUnsupported
+        }
+        for (scheme in listOf("HTTPS", "HTTP")) {
+            if (values["${scheme}Enable"] != "1") continue
+            val host = values["${scheme}Proxy"]?.takeIf { it.isNotBlank() } ?: continue
+            val port = values["${scheme}Port"]?.toIntOrNull()?.takeIf { it in 1..65535 } ?: continue
+            return Inspect.Proxy(host, port)
+        }
+        return Inspect.Direct
     }
 
     /**

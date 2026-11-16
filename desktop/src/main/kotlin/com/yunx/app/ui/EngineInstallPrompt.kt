@@ -65,6 +65,7 @@ object EngineInstallPrompt {
      * @return 是否真的弹出了提示
      */
     fun ask(reason: Reason): Boolean {
+        if (!com.yunx.app.util.DesktopPlatform.isWindows) return false
         if (FfplayManager.currentPath() != null) return false
         val repo = SettingsRepository()
         if (repo.ffmpegEngineAsked) return false

@@ -120,6 +120,14 @@ fun main(args: Array<String>) {
     }
     // 原生暗色模式：让 Win32 原生菜单（托盘右键）跟随系统暗色。必须在创建任何窗口前调用。
     DarkMode.enable()
+    if (com.yunx.app.util.DesktopPlatform.isMac) runCatching {
+        java.awt.Desktop.getDesktop().addAppEventListener(java.awt.desktop.AppReopenedListener {
+            java.awt.EventQueue.invokeLater {
+                java.awt.Frame.getFrames().firstOrNull { it.title == "云析 YunX-Desktop" }
+                    ?.let { DesktopActions.bringWindowToFront(it) }
+            }
+        })
+    }
     // 迅雷设备指纹（进程启动时初始化一次，等价原 Application.onCreate）
     XunleiDeviceFingerprint.init()
 
@@ -242,6 +250,12 @@ fun main(args: Array<String>) {
         ) {
             androidx.compose.runtime.SideEffect {
                 mainWindow = window as? java.awt.Frame
+                if (isMac) runCatching {
+                    java.awt.Desktop.getDesktop().setQuitHandler { _, response ->
+                        response.cancelQuit()
+                        closeRequested = true
+                    }
+                }
                 // 接管窗口异常：默认实现会弹原生「Error」对话框（退出期的良性竞态也会弹）
                 runCatching { window.exceptionHandler = windowErrorHandler }
                 com.yunx.app.ui.components.PreviewFullscreen.windowState = windowState
@@ -280,6 +294,10 @@ fun main(args: Array<String>) {
                     TrayManager.install(
                         image = icon,
                         onLeftClick = { DesktopActions.bringWindowToFront(mainWindow) },
+                        onExit = {
+                            saveWindowPosition(mainWindow)
+                            exitApplication()
+                        },
                         onRightClick = { x, y ->
                             val cmd = Win32PopupMenu.show(
                                 items = listOf(

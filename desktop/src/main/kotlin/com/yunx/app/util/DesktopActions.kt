@@ -72,6 +72,11 @@ object DesktopActions {
             }.getOrNull()
             if (ret != null && com.sun.jna.Pointer.nativeValue(ret.toPointer()) > 32L) return true
         }
+        if (DesktopPlatform.isMac) return runCatching {
+            ProcessBuilder("/usr/bin/open", "-R", file.absolutePath).start()
+            true
+        }.getOrDefault(false)
+        if (!WindowsTitleBar.isWindows) return openDirectory(file.parent)
         return runCatching {
             ProcessBuilder("explorer.exe", "/select,", file.absolutePath).start()
             true
@@ -83,7 +88,7 @@ object DesktopActions {
         val dir = File(path)
         if (!dir.isDirectory && !dir.mkdirs()) return false
         return runCatching {
-            ProcessBuilder("explorer.exe", dir.absolutePath).start()
+            java.awt.Desktop.getDesktop().open(dir)
             true
         }.getOrDefault(false)
     }
@@ -119,6 +124,12 @@ object DesktopActions {
      */
     fun restartApp(): Boolean {
         val exe = launcherExe() ?: return false
+        if (DesktopPlatform.isMac) return runCatching {
+            ProcessBuilder("/bin/sh", "-c", "sleep 2; exec \"\$1\"", "yunx-restart", exe.absolutePath)
+                .directory(exe.parentFile).start()
+            true
+        }.getOrDefault(false)
+        if (!WindowsTitleBar.isWindows) return false
         return runCatching {
             // 用 cmd 延迟启动：本进程马上就会退出，必须等它把文件句柄都放掉。
             // 延迟用 ping 而不是 timeout —— timeout 在 stdin 被重定向时会直接报错退出（ProcessBuilder 默认就是管道）
@@ -178,17 +189,19 @@ object DesktopActions {
         val isMac = osName.contains("mac") || osName.contains("darwin")
 
         if (isMac) {
+            val key = "apple.awt.fileDialogForDirectories"
+            val previous = System.getProperty(key)
             val dialog = FileDialog(null as Frame?, "选择文件夹", FileDialog.LOAD)
-            dialog.isMultipleMode = false
-            System.setProperty("apple.awt.fileDialogForDirectories", "true")
-            dialog.isVisible = true
-            val dir = dialog.directory
-            val file = dialog.file
-            dialog.dispose()
-            return when {
-                dir == null -> null
-                file == null -> dir
-                else -> File(dir, file).absolutePath
+            return try {
+                dialog.isMultipleMode = false
+                System.setProperty(key, "true")
+                dialog.isVisible = true
+                val dir = dialog.directory
+                val file = dialog.file
+                if (dir != null && file != null) File(dir, file).absolutePath else null
+            } finally {
+                dialog.dispose()
+                if (previous == null) System.clearProperty(key) else System.setProperty(key, previous)
             }
         }
 

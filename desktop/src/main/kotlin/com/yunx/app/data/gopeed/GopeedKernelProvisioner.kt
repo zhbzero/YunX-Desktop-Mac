@@ -98,12 +98,12 @@ object GopeedKernelProvisioner {
         val json = fetchLatestJson()
         val tag = json.optString("tag_name")
         if (tag.isBlank()) throw IllegalStateException("官方 Release 缺少版本号")
-        val wanted = "$ASSET_PREFIX$tag-windows-${archSuffix()}$ASSET_ARCH_SUFFIX"
+        val wanted = "$ASSET_PREFIX$tag-${com.yunx.app.util.DesktopPlatform.gopeedOs}-${archSuffix()}$ASSET_ARCH_SUFFIX"
         val asset = json.optJSONArray("assets")?.let { arr ->
             (0 until arr.length())
                 .mapNotNull { arr.optJSONObject(it) }
                 .firstOrNull { it.optString("name").equals(wanted, ignoreCase = true) }
-        } ?: throw IllegalStateException("官方 Release（$tag）里没有 Windows 内核包 $wanted")
+        } ?: throw IllegalStateException("官方 Release（$tag）里没有当前系统的内核包 $wanted")
         val direct = asset.optString("browser_download_url")
         if (direct.isBlank()) throw IllegalStateException("内核包缺少下载地址")
         Plan(

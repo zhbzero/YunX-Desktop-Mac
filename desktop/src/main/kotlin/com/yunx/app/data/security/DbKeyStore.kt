@@ -35,7 +35,8 @@ enum class DbEncryptionLevel(val id: String, val label: String) {
     STRICTEST("strictest", "严格");
 
     /** 该档位在当前系统上是否可用（严格档需要 SQLCipher 原生库，暂未支持） */
-    val isSupported: Boolean get() = this != STRICTEST
+    val isSupported: Boolean get() = this != STRICTEST &&
+        (this != STRICT || com.yunx.app.util.DesktopPlatform.isWindows)
 
     /** 密钥是否绑定本机（换机器后凭证将无法解密，需重新登录） */
     val isMachineBound: Boolean get() = this == NORMAL || this == STRICT
@@ -142,6 +143,12 @@ object DbKeyStore {
         }
         file.parentFile?.mkdirs()
         val tmp = File(file.parentFile, "${file.name}.tmp")
+        if (!com.yunx.app.util.DesktopPlatform.isWindows) {
+            if (!tmp.exists()) Files.createFile(tmp.toPath(),
+                java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                    java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")))
+            Files.setPosixFilePermissions(tmp.toPath(), java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"))
+        }
         tmp.writeBytes(content)
         // 读回验证：确保这把密钥确实能解开（写坏了就立刻发现，而不是下次启动才发现）
         if (level != DbEncryptionLevel.LOOSE) {
@@ -219,6 +226,19 @@ object DbKeyStore {
 
     /** Windows MachineGuid（HKLM\SOFTWARE\Microsoft\Cryptography），普通用户可读 */
     private fun machineGuid(): String? = runCatching {
+        if (com.yunx.app.util.DesktopPlatform.isMac) {
+            val process = ProcessBuilder("/usr/sbin/ioreg", "-rd1", "-c", "IOPlatformExpertDevice").start()
+            if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                return@runCatching null
+            }
+            val output = process.inputStream.bufferedReader().readText()
+            return@runCatching Regex("\"IOPlatformUUID\"\\s*=\\s*\"([^\"]+)\"")
+                .find(output)?.groupValues?.get(1)
+        }
+        if (!com.yunx.app.util.DesktopPlatform.isWindows) {
+            return@runCatching File("/etc/machine-id").takeIf { it.isFile }?.readText()?.trim()?.takeIf { it.isNotBlank() }
+        }
         Advapi32Util.registryGetStringValue(
             WinReg.HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Cryptography", "MachineGuid"
         ).takeIf { it.isNotBlank() }

@@ -41,6 +41,7 @@ object PositionPicker {
         colorRgb: Int,
         reduceMotion: Boolean
     ): Position? {
+        if (DesktopPlatform.isMac) return pickMac(boxWidth, boxHeight, initialX, initialY)
         val resolved = resolveExe()
         if (resolved == null) {
             Log.w(TAG, "未找到 $EXE_NAME，无法设置主窗口位置（jar 内 yunx/$EXE_NAME 资源缺失，且开发态 build\\ 下也没有）")
@@ -77,6 +78,35 @@ object PositionPicker {
             // 从 jar 一次性释放出来的临时 exe：遮罩一退出立即销毁
             if (resolved.temporary) deleteQuietly(resolved.exe)
         }
+    }
+
+    private fun pickMac(width: Int, height: Int, x: Int, y: Int): Position? {
+        val done = java.util.concurrent.CountDownLatch(1)
+        var selected: Position? = null
+        javax.swing.SwingUtilities.invokeLater {
+            val frame = javax.swing.JFrame("拖动窗口到目标位置").apply {
+                defaultCloseOperation = javax.swing.JFrame.DISPOSE_ON_CLOSE
+                setBounds(x, y, width, height)
+                isAlwaysOnTop = true
+                layout = java.awt.BorderLayout()
+                add(javax.swing.JLabel("拖动此窗口，点击保存位置", javax.swing.SwingConstants.CENTER), java.awt.BorderLayout.CENTER)
+            }
+            val buttons = javax.swing.JPanel()
+            buttons.add(javax.swing.JButton("保存位置").apply {
+                addActionListener { selected = Position(frame.x, frame.y); frame.dispose() }
+            })
+            buttons.add(javax.swing.JButton("取消").apply { addActionListener { frame.dispose() } })
+            frame.add(buttons, java.awt.BorderLayout.SOUTH)
+            frame.addWindowListener(object : java.awt.event.WindowAdapter() {
+                override fun windowClosed(e: java.awt.event.WindowEvent) { done.countDown() }
+            })
+            frame.rootPane.registerKeyboardAction({ frame.dispose() },
+                javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0),
+                javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW)
+            frame.isVisible = true
+        }
+        done.await()
+        return selected
     }
 
     /** 解析结果：[temporary] 为 true 表示该 exe 是从 jar 一次性释放的，用完必须删除 */

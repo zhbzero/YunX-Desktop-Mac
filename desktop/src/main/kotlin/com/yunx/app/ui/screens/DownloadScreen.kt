@@ -418,6 +418,7 @@ private fun DownloadBatchBar(
             Text("全部开始")
         }
         Spacer(modifier = Modifier.weight(1f))
+        if (com.yunx.app.util.DesktopPlatform.isWindows) {
         // 完成后关机：整行可点（含文字），开关本身不单独响应点击
         val onTint = MaterialTheme.colorScheme.primary
         val offTint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -456,6 +457,7 @@ private fun DownloadBatchBar(
             }
         }
         Spacer(modifier = Modifier.width(8.dp))
+        }
         TextButton(onClick = onDeleteAll) {
             Icon(
                 imageVector = Icons.Outlined.Delete,

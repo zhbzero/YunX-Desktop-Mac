@@ -267,6 +267,11 @@ fun DownloadEngineScreen(
 
     /** 下载 / 更新 FFmpeg 精简版到应用私有目录（ffplay 在线预览 + DASH 合轨都用它） */
     fun downloadFfmpeg() {
+        if (!com.yunx.app.util.DesktopPlatform.isWindows) {
+            DesktopActions.copyToClipboard("brew install ffmpeg")
+            SnackbarController.show("已复制安装命令，请在终端运行。安装后重新打开此页即可识别")
+            return
+        }
         if (ffmpegDownloading) return
         ffmpegDownloading = true
         ffmpegRead = 0L
@@ -391,7 +396,7 @@ fun DownloadEngineScreen(
                             kernelVersion?.let { append(" · 核心版本 $it") }
                         }
                     } else {
-                        "未导入（需要官方 windows 版内核）"
+                        "未导入（需要官方当前系统的 web 内核）"
                     }
                 )
                 Spacer(Modifier.height(6.dp))
@@ -417,7 +422,7 @@ fun DownloadEngineScreen(
                     ) {
                         Icon(Icons.Outlined.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("导入本地内核（.zip / .exe）")
+                        Text(if (com.yunx.app.util.DesktopPlatform.isWindows) "导入本地内核（.zip / .exe）" else "导入本地内核（.zip / gopeed）")
                     }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -574,7 +579,7 @@ fun DownloadEngineScreen(
                     Spacer(Modifier.height(8.dp))
                     Text(
                         text = "影响解析页的在线预览与哔哩哔哩等分轨视频的合轨。FFplay 由 FFmpeg 精简版提供，" +
-                            "不随安装包发布，需要在这里下载；本机已装 FFmpeg（PATH / 常见目录）时会自动命中。",
+                            if (com.yunx.app.util.DesktopPlatform.isMac) "支持 Homebrew 安装的 FFmpeg；未安装时可使用内置播放器。" else "不随安装包发布，需要在这里下载；本机已装 FFmpeg（PATH / 常见目录）时会自动命中。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -603,7 +608,7 @@ fun DownloadEngineScreen(
                     }
 
                     Spacer(Modifier.height(10.dp))
-                    KeyValueRow("FFplay 状态", ffplayPath ?: "未检测到（可下载 FFmpeg 精简版，约 50–90MB）")
+                    KeyValueRow("FFplay 状态", ffplayPath ?: if (com.yunx.app.util.DesktopPlatform.isMac) "未检测到，可通过 Homebrew 安装" else "未检测到（可下载 FFmpeg 精简版，约 50–90MB）")
 
                     Spacer(Modifier.height(14.dp))
                     if (ffmpegDownloading) {
@@ -642,7 +647,7 @@ fun DownloadEngineScreen(
                             Button(onClick = { downloadFfmpeg() }, modifier = Modifier.weight(1f)) {
                                 Icon(Icons.Outlined.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text(if (ffplayPath == null) "下载 FFmpeg 精简版" else "重新下载 / 更新 FFmpeg")
+                                Text(if (com.yunx.app.util.DesktopPlatform.isMac) "复制 FFmpeg 安装命令" else if (ffplayPath == null) "下载 FFmpeg 精简版" else "重新下载 / 更新 FFmpeg")
                             }
                             // 只有「本应用下载过」才给卸载：系统 PATH / 常见目录里的 FFmpeg 不归我们管
                             if (ffmpegPrivate) {
@@ -787,7 +792,7 @@ fun DownloadEngineScreen(
                     ) {
                         Icon(Icons.Outlined.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("导入本地内核（.zip / .exe）")
+                        Text(if (com.yunx.app.util.DesktopPlatform.isWindows) "导入本地内核（.zip / .exe）" else "导入本地内核（.zip / gopeed）")
                     }
                 }
             },

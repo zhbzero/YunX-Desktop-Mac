@@ -11,17 +11,17 @@ import org.json.JSONObject
 
 /**
  * GitHub Release 更新检测。
- * 正式版通道（默认）：GET https://api.github.com/repos/tidain/YunX-Desktop/releases/latest
+ * 正式版通道（默认）：GET https://api.github.com/repos/zhbzero/YunX-Desktop-Mac/releases/latest
  * 预发布通道（设置页开启「接受预发布版更新」后）：GET .../releases
  */
 object UpdateChecker {
 
     private const val RELEASES_LATEST_URL =
-        "https://api.github.com/repos/tidain/YunX-Desktop/releases/latest"
+        "https://api.github.com/repos/zhbzero/YunX-Desktop-Mac/releases/latest"
 
     /** Release 列表（按发布时间倒序，含 Pre-release）：开启「接受预发布版更新」时用它取最新一条 */
     private const val RELEASES_LIST_URL =
-        "https://api.github.com/repos/tidain/YunX-Desktop/releases"
+        "https://api.github.com/repos/zhbzero/YunX-Desktop-Mac/releases"
 
     private const val TAG = "YunX-Update"
 
@@ -203,6 +203,9 @@ object UpdateChecker {
                     }
                 }
             }
+            if (com.yunx.app.util.DesktopPlatform.isMac && assets.none { isCompatibleMacAsset(it.name) }) {
+                return@runCatching null
+            }
             val rawBody = json.optString("body")
             // 强制更新字段从**原始正文**解析（清洗只去头图/徽章，这里用原文更稳）
             val (mandatory, minMandatoryVersion) = parseMandatory(rawBody)
@@ -219,6 +222,13 @@ object UpdateChecker {
         }.onFailure { e ->
             Log.e(TAG, "获取最新 Release 异常：${e.javaClass.simpleName}: ${e.message}", e)
         }.getOrNull()
+    }
+
+    internal fun isCompatibleMacAsset(name: String): Boolean {
+        val lower = name.lowercase()
+        val arch = com.yunx.app.util.DesktopPlatform.arch
+        val wanted = if (arch == "arm64") listOf("arm64", "aarch64") else listOf("x64", "x86_64", "amd64")
+        return lower.endsWith(".dmg") && (wanted.any { it in lower } || "universal" in lower)
     }
 
     /** 正式版通道：GET /releases/latest，GitHub 保证返回最新的非 Pre-release、非 Draft 版本 */

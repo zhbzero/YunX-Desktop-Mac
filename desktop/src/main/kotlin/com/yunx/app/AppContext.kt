@@ -22,10 +22,13 @@ object AppContext {
 
     /** 应用数据根目录：默认 <用户目录>/.yunx-desktop；可用环境变量 YUNX_DESKTOP_DATA_DIR 覆盖（测试/沙箱环境用） */
     val dataDir: File = System.getenv("YUNX_DESKTOP_DATA_DIR")?.let { File(it) }
-        ?: File(System.getProperty("user.home"), ".yunx-desktop")
+        ?: if (com.yunx.app.util.DesktopPlatform.isMac) {
+            File(System.getProperty("user.home"), "Library/Application Support/YunX-Desktop")
+        } else File(System.getProperty("user.home"), ".yunx-desktop")
 
     /** 旧版数据根目录（.yunx-pc）：首次启动时整体迁移到新目录 */
-    private val legacyDataDir: File = File(System.getProperty("user.home"), ".yunx-pc")
+    private val legacyDataDir: File = File(System.getProperty("user.home"),
+        if (com.yunx.app.util.DesktopPlatform.isMac) ".yunx-desktop" else ".yunx-pc")
 
     // ---------- 杂项偏好（必须在下面解析目录之前声明：Kotlin 单例按声明顺序初始化）----------
 
@@ -92,6 +95,7 @@ object AppContext {
     private fun migrateLegacyDataDir() {
         if (System.getenv("YUNX_DESKTOP_DATA_DIR") != null) return
         if (dataDir.exists() || !legacyDataDir.exists()) return
+        dataDir.parentFile?.mkdirs()
         if (!legacyDataDir.renameTo(dataDir)) {
             Log.w("YunX-DataDir", "旧数据目录迁移失败：${legacyDataDir.absolutePath}")
             return
