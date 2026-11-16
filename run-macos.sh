@@ -24,7 +24,7 @@ case "${1:-run}" in
     esac
     app_version="$(head -n 1 version.txt | tr -d '\r\n')"
     mkdir -p release
-    cp "desktop/build/compose/binaries/main/dmg/YunX-Desktop-$app_version.dmg" "release/YunX-Desktop-macOS-$build_arch-$app_version.dmg"
+    cp "desktop/build/compose/binaries.noindex/main/dmg/YunX-Desktop-$app_version.dmg" "release/YunX-Desktop-macOS-$build_arch-$app_version.dmg"
     echo "安装包：release/YunX-Desktop-macOS-$build_arch-$app_version.dmg"
     ;;
   *) echo "用法：./run-macos.sh {run|build|test|app|dmg}" >&2; exit 2 ;;

@@ -21,7 +21,7 @@
 ./run-macos.sh dmg
 ```
 
-`.app` 位于 `desktop/build/compose/binaries/main/app/`，原始 DMG 位于 `desktop/build/compose/binaries/main/dmg/`；脚本会在 `release/` 中生成带架构名称的安装包，便于发布和自动更新识别。Intel 版本必须使用 Intel JDK 构建；本次交付只验证 Apple Silicon 产物。
+`.app` 位于 `desktop/build/compose/binaries.noindex/main/app/`，原始 DMG 位于 `desktop/build/compose/binaries.noindex/main/dmg/`；脚本会在 `release/` 中生成带架构名称的安装包，便于发布和自动更新识别。Intel 版本必须使用 Intel JDK 构建；本次交付只验证 Apple Silicon 产物。
 
 Gradle Wrapper 使用官方 Gradle 8.13，并固定发行包 SHA-256。首次构建需要联网下载依赖。
 
@@ -54,3 +54,11 @@ Mac 版不提供 Windows DPAPI 凭证保护档位、浏览器 Cookie 自动导�
 - 慢连接重连会比较同伴速度或持续无数据时间，避免下载源对所有连接限速时反复断开正常传输。
 
 图片交互用仅访问本机的生成图片测试窗口验证：`./gradlew :desktop:previewSmoke`。实际网盘预览仍需账号与平台允许免转存取链；若某个分享不支持，可使用独立下载按钮保存后查看。此次未执行携带个人下载授权信息的联网测速，不承诺能提升下载源本身允许的速度。
+
+## 1.3.6 退出兼容修复
+
+Command+Q 改为应用统一处理退出，先停止隐藏页面并等待浏览器 Cookie 保存完成，再结束应用。JCEF 132 的显式 native shutdown 会在 macOS 27 上错误地从 AWT 线程销毁 NSWindow；Mac 版在正常 JVM 退出时交由系统释放该引擎，不再调用这条有问题的析构路径。数据库仍通过正常退出钩子完成 checkpoint，未使用强制终止或屏蔽系统崩溃报告来替代正常退出。
+
+Mac 构建产物放在 `desktop/build/compose/binaries.noindex/`，避免系统应用搜索把开发构建也列为第二个 YunX。正式安装位置保持 `/Applications/YunX-Desktop.app`。
+
+Apple Silicon / macOS 27.2.1 实测：102 项自动化测试通过；正式安装版连续两次使用 Command+Q 退出，进程均以状态 0 结束，Cookie 保存回调完成、浏览器子进程退出，未新增系统崩溃报告。系统搜索仅保留正式安装路径。

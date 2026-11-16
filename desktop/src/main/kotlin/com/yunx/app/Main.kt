@@ -175,6 +175,26 @@ fun main(args: Array<String>) {
         var mainWindow: java.awt.Frame? = null
         // 关闭请求信号：点击窗口 X 时置 true，由 MainScreen 决定退出 / 托盘 / 询问
         var closeRequested by remember { mutableStateOf(false) }
+        var quitting by remember { mutableStateOf(false) }
+        fun quitApplication() {
+            if (quitting) return
+            quitting = true
+            saveWindowPosition(mainWindow)
+            scope.launch {
+                val stopped = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    HeadlessWebView.closeQuietly()
+                    JcefHolder.shutdownAndWait()
+                }
+                if (!stopped) {
+                    quitting = false
+                    com.yunx.app.ui.SnackbarController.show("浏览器仍在关闭，请稍后重试退出")
+                    return@launch
+                }
+                val w = mainWindow
+                if (w != null) WindowFx.fadeOutThen(w) { exitApplication() }
+                else exitApplication()
+            }
+        }
         // 抑制关闭请求：程序化隐藏窗口（最小化到托盘）时为 true，避免 onCloseRequest 重跑导致弹窗闪烁
         var suppressCloseRequest by remember { mutableStateOf(false) }
         // 启动器闪屏模式（launcher 注入 YUNXPC_SPLASH=1）：窗口可见性由 Compose 控制，
@@ -250,10 +270,11 @@ fun main(args: Array<String>) {
         ) {
             androidx.compose.runtime.SideEffect {
                 mainWindow = window as? java.awt.Frame
+                JcefHolder.setQuitHandler { quitApplication() }
                 if (isMac) runCatching {
                     java.awt.Desktop.getDesktop().setQuitHandler { _, response ->
                         response.cancelQuit()
-                        closeRequested = true
+                        quitApplication()
                     }
                 }
                 // 接管窗口异常：默认实现会弹原生「Error」对话框（退出期的良性竞态也会弹）
@@ -294,10 +315,7 @@ fun main(args: Array<String>) {
                     TrayManager.install(
                         image = icon,
                         onLeftClick = { DesktopActions.bringWindowToFront(mainWindow) },
-                        onExit = {
-                            saveWindowPosition(mainWindow)
-                            exitApplication()
-                        },
+                        onExit = { quitApplication() },
                         onRightClick = { x, y ->
                             val cmd = Win32PopupMenu.show(
                                 items = listOf(
@@ -309,12 +327,7 @@ fun main(args: Array<String>) {
                             )
                             when (cmd) {
                                 1 -> DesktopActions.bringWindowToFront(mainWindow)
-                                2 -> {
-                                    saveWindowPosition(mainWindow)
-                                    val w = mainWindow
-                                    if (w != null) WindowFx.fadeOutThen(w) { exitApplication() }
-                                    else exitApplication()
-                                }
+                                2 -> quitApplication()
                             }
                         }
                     )
@@ -324,12 +337,7 @@ fun main(args: Array<String>) {
                 MainScreen(
                     closeRequested = closeRequested,
                     onCloseHandled = { closeRequested = false },
-                    onExitApplication = {
-                        saveWindowPosition(mainWindow)
-                        val w = mainWindow
-                        if (w != null) WindowFx.fadeOutThen(w) { exitApplication() }
-                        else exitApplication()
-                    },
+                    onExitApplication = { quitApplication() },
                     onMinimizeToTray = {
                         // 记录当前窗口位置，再隐藏（下次启动「上次关闭位置」可还原）
                         saveWindowPosition(mainWindow)

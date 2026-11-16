@@ -294,6 +294,8 @@ compose.desktop {
         mainClass = "com.yunx.app.MainKt"
         if (hostIsMac) jvmArgs += macJvmArgs
         nativeDistributions {
+            // macOS excludes .noindex directories from Spotlight application search.
+            if (hostIsMac) outputBaseDir.set(layout.buildDirectory.dir("compose/binaries.noindex"))
             targetFormats(TargetFormat.Exe, TargetFormat.Dmg)
             // sqlite-jdbc 通过反射加载 java.sql.Driver，jlink 自动检测不到，必须显式声明；
             // jdk.httpserver 是视频预览的本地回环代理（com.sun.net.httpserver），

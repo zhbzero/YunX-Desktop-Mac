@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import com.yunx.app.AppContext
 import com.yunx.app.util.Log
 import me.friwi.jcefmaven.CefAppBuilder
+import me.friwi.jcefmaven.MavenCefAppHandlerAdapter
 import org.cef.CefApp
 import org.cef.CefSettings
 import java.io.File
@@ -45,6 +46,14 @@ object JcefHolder {
     var browserReady by mutableStateOf(false)
         private set
 
+    @Volatile private var quitHandler: (() -> Unit)? = null
+    @Volatile private var pendingQuit = false
+
+    fun setQuitHandler(handler: (() -> Unit)?) {
+        quitHandler = handler
+        if (handler != null && pendingQuit) { pendingQuit = false; handler() }
+    }
+
     private val lock = Any()
     private var initThread: Thread? = null
 
@@ -65,6 +74,19 @@ object JcefHolder {
                     killStaleJcefHelpers()
                     recoverFromAbnormalExit()
                     val builder = CefAppBuilder()
+                    builder.setAppHandler(object : MavenCefAppHandlerAdapter() {
+                        override fun onBeforeTerminate(): Boolean {
+                            val handler = quitHandler
+                            if (handler == null) pendingQuit = true else handler()
+                            return true
+                        }
+                        override fun stateHasChanged(state: CefApp.CefAppState) {
+                            if (state == CefApp.CefAppState.TERMINATED) {
+                                browserReady = false
+                                runCatching { runningMarker().delete() }
+                            }
+                        }
+                    })
                     val installDir = File(AppContext.cacheDir, "jcef-bundle")
                     builder.setInstallDir(installDir)
                     // 发布包带的是 app\jcef-natives.tar.gz（不含原生 jar）：
@@ -143,14 +165,47 @@ object JcefHolder {
         }
     }
 
-    /** 进程退出前释放（尽力而为；进程即将结束，失败无碍） */
-    fun disposeQuietly() {
-        runCatching { cefApp?.dispose() }.onFailure {
-            Log.w(TAG, "CefApp dispose failed: ${it.message}")
-        }
+    /** Save browser state before closing the application. Never wait on the EDT. */
+    fun shutdownAndWait(timeoutMs: Long = 10_000L): Boolean {
+        check(!javax.swing.SwingUtilities.isEventDispatchThread()) { "Do not wait for JCEF on the EDT" }
+        val app = cefApp ?: return true
+        browserReady = false
+        val finished = JcefExitPolicy.finish(
+            isMac = com.yunx.app.util.DesktopPlatform.isMac,
+            persist = { flushCookies(timeoutMs) },
+            disposeAndWait = {
+                app.dispose()
+                val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+                while (CefApp.getState() != CefApp.CefAppState.TERMINATED && System.nanoTime() < deadline) {
+                    Thread.sleep(25)
+                }
+                CefApp.getState() == CefApp.CefAppState.TERMINATED
+            }
+        )
+        if (!finished) return false
+        // On Mac the process owns CEF until normal JVM exit. Calling CefApp.dispose
+        // invokes JCEF 132's broken TempWindowMac destructor on this OS version.
         cefApp = null
-        // 正常释放：清掉运行标记，避免下次启动被误判为异常退出
         runCatching { runningMarker().delete() }
+        Log.i(TAG, "Browser session saved; application ready to exit")
+        return true
+    }
+
+    private fun flushCookies(timeoutMs: Long): Boolean {
+        if (CefApp.getState() != CefApp.CefAppState.INITIALIZED) return true
+        val done = java.util.concurrent.CountDownLatch(1)
+        val accepted = org.cef.network.CefCookieManager.getGlobalManager().flushStore { done.countDown() }
+        return accepted && done.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
+
+    /** Shutdown-hook fallback. The Mac engine is released by normal process termination. */
+    fun disposeQuietly() {
+        if (com.yunx.app.util.DesktopPlatform.isMac) return
+        runCatching { cefApp?.dispose() }.onFailure { Log.w(TAG, "CefApp dispose failed: ${it.message}") }
+        if (cefApp == null || CefApp.getState() == CefApp.CefAppState.TERMINATED) {
+            cefApp = null
+            runCatching { runningMarker().delete() }
+        }
     }
 
     /** 运行中标记：CEF 初始化成功后写入，正常退出时删除；启动时若仍存在，说明上次没有正常释放 */

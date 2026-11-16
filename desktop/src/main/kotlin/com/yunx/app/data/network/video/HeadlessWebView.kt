@@ -82,6 +82,7 @@ object HeadlessWebView {
     @Volatile private var router: CefMessageRouter? = null
     @Volatile private var browser: CefBrowser? = null
 
+    @Volatile private var closing = false
     private val browserLock = Any()
     private val lock = Any()
     private val tokenSeq = AtomicLong(0L)
@@ -159,7 +160,7 @@ object HeadlessWebView {
     fun prewarm(url: String) {
         Thread({
             val deadline = System.currentTimeMillis() + PREWARM_WAIT_MS
-            while (!JcefHolder.isAvailable() && System.currentTimeMillis() < deadline) {
+            while (!closing && !JcefHolder.isAvailable() && System.currentTimeMillis() < deadline) {
                 try {
                     Thread.sleep(200L)
                 } catch (_: InterruptedException) {
@@ -192,6 +193,8 @@ object HeadlessWebView {
      * 这里先关浏览器，再让 JcefHolder 释放 CefApp；任何一步失败都忽略（进程即将结束）。
      */
     fun closeQuietly() {
+        closing = true
+        synchronized(lock) { active?.finish(null); active = null }
         synchronized(browserLock) {
             runCatching { parkScheduler.shutdownNow() }
             val b = browser
@@ -312,6 +315,7 @@ object HeadlessWebView {
      * @return true 表示本次新建（已按 [initialUrl] 发起导航）；false 表示复用已有浏览器。
      */
     private fun ensureBrowser(initialUrl: String): Boolean = synchronized(browserLock) {
+        if (closing) return@synchronized false
         if (browser != null) return false
         val app = JcefHolder.app() ?: return false
         var created = false
