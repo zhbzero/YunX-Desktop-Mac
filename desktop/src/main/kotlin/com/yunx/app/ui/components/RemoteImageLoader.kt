@@ -39,6 +39,7 @@ import java.util.concurrent.ConcurrentHashMap
 object RemoteImageLoader {
 
     private const val MAX_ENTRIES = 128
+    private const val MAX_ENCODED_BYTES = 32 * 1024 * 1024
 
     private val cacheLock = Any()
 
@@ -123,7 +124,11 @@ object RemoteImageLoader {
                         .build()
                     client.newCall(req).execute().use { resp ->
                         if (!resp.isSuccessful) return@withPermit null
-                        resp.body?.bytes()
+                        val body = resp.body ?: return@withPermit null
+                        if (body.contentLength() > MAX_ENCODED_BYTES) return@withPermit null
+                        body.byteStream().use { input ->
+                            input.readNBytes(MAX_ENCODED_BYTES + 1).takeIf { it.size <= MAX_ENCODED_BYTES }
+                        }
                     }
                 }
             }.getOrNull()

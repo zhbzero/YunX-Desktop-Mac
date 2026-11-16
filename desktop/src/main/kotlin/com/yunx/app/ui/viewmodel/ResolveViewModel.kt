@@ -744,7 +744,7 @@ class ResolveViewModel(
     private var currentPlatform: SharePlatform = SharePlatform.QUARK
 
     /** 当前平台凭证（夸克/UC/百度/139/115 用 cookie，迅雷/123 用 access_token；GitHub 无需凭证） */
-    private suspend fun currentCredential(): String? = when (currentPlatform) {
+    private suspend fun currentCredential(platform: SharePlatform = currentPlatform): String? = when (platform) {
         SharePlatform.UC -> ucAccountRepository.getAccount()?.cookie
         SharePlatform.XUNLEI -> xunleiAccountRepository.getAccount()?.accessToken
         SharePlatform.BAIDU -> baiduAccountRepository.getAccount()?.cookie
@@ -1764,6 +1764,64 @@ class ResolveViewModel(
         val noSave = repo.getShareDownloadLinkWithoutSave(session, file, credential)
         if (noSave.isSuccess || currentPlatform != SharePlatform.QUARK) return noSave
         return repo.getShareDownloadLink(session, file, credential, skipSpaceCheck)
+    }
+
+    val canPreviewImages: Boolean
+        get() = currentPlatform == SharePlatform.QUARK || currentPlatform == SharePlatform.UC
+
+    private val imagePreviewSlots = Semaphore(3)
+    private val imagePreviewLinks = object : LinkedHashMap<String, Pair<Long, com.yunx.app.data.preview.ShareImagePreview>>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<Long, com.yunx.app.data.preview.ShareImagePreview>>?): Boolean = size > 128
+    }
+
+    /** Read-only preview: never fall back to transferring files into a user's cloud drive. */
+    suspend fun loadImagePreview(file: ShareFile): Result<com.yunx.app.data.preview.ShareImagePreview> {
+        if (!canPreviewImages || !com.yunx.app.data.preview.ShareImagePolicy.isImage(file)) {
+            return Result.failure(IllegalArgumentException("此文件暂不支持在线图片预览"))
+        }
+        val platform = currentPlatform
+        val share = session ?: return Result.failure(IllegalStateException("请先解析分享"))
+        val repo = currentRepo()
+        val key = "$platform|${share.shareId}|${share.stoken}|${file.fid}"
+        fun cached() = synchronized(imagePreviewLinks) {
+            imagePreviewLinks[key]?.takeIf { System.currentTimeMillis() - it.first < 5 * 60_000L }?.second
+        }
+        cached()?.let { return Result.success(it) }
+        return imagePreviewSlots.withPermit {
+            cached()?.let { return@withPermit Result.success(it) }
+            try {
+                val credential = currentCredential(platform).orEmpty()
+                val cookie = when {
+                    credential.isBlank() -> ""
+                    platform == SharePlatform.QUARK -> accountRepository.getFreshCookie() ?: credential
+                    else -> ucAccountRepository.getFreshCookie() ?: credential
+                }
+                val link = if (cookie.isBlank()) {
+                    repo.getGuestShareDownloadLink(share, file).getOrThrow()
+                } else {
+                    repo.getShareDownloadLinkWithoutSave(share, file, cookie).getOrThrow()
+                }
+                val headers = if (platform == SharePlatform.QUARK) {
+                    mapOf("Cookie" to link.guestCookie.ifBlank { cookie },
+                        "User-Agent" to QuarkConstants.API_USER_AGENT,
+                        "Referer" to QuarkConstants.DOWNLOAD_REFERER)
+                } else {
+                    mapOf("Cookie" to link.guestCookie.ifBlank { cookie },
+                        "User-Agent" to if (link.guestCookie.isNotBlank()) UCConstants.GUEST_UA else UCConstants.USER_AGENT,
+                        "Referer" to UCConstants.DOWNLOAD_REFERER,
+                        "Origin" to UCConstants.WEB_ORIGIN).let { headers ->
+                            if (link.guestCookie.isNotBlank()) headers + ("Sec-Ch-Ua" to UCConstants.GUEST_SEC_CH_UA) else headers
+                        }
+                }
+                val preview = com.yunx.app.data.preview.ShareImagePreview(link.downloadUrl, headers)
+                synchronized(imagePreviewLinks) { imagePreviewLinks[key] = System.currentTimeMillis() to preview }
+                Result.success(preview)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
     }
 
     /** 获取文件下载直链（各平台实现不同：夸克免转存优先（失败回退转存）/ UC 直接取 / 迅雷转存后取详情直链；GitHub 直接构造 URL） */

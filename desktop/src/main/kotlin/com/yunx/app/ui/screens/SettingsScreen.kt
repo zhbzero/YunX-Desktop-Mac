@@ -156,7 +156,6 @@ fun SettingsScreen(
     scrollBehavior: TopAppBarScrollBehavior,
     onThemeClick: () -> Unit,
     onAboutClick: () -> Unit,
-    onSupportClick: () -> Unit,
     /** 打开「实验性功能」二级页 */
     onExperimentalClick: () -> Unit,
     /** 打开「引擎管理」二级页（下载引擎 / 视频预览引擎） */
@@ -530,13 +529,6 @@ fun SettingsScreen(
             onLongClick = { showDevMenu = true } // 长按打开隐藏开发调试菜单
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
-        SettingsItem(
-            icon = Icons.Outlined.VolunteerActivism,
-            title = "支持开发",
-            description = "微信扫码捐赠，支持项目持续维护",
-            onClick = onSupportClick
-        )
     }
 
     // 导出日志方式选择弹窗

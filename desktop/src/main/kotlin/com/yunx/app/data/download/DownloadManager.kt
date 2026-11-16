@@ -505,6 +505,7 @@ class DownloadManager(
      * ★ 慢连接抢占（永久逻辑）：把「跑得远低于同伴」的在飞分片换到新连接上续传。
      *
      * 判定阈值 = max(设置里的绝对下限, 本任务平均单连接速度 / 2)：
+     * 低于阈值后还需满足「明显慢于同伴」或「持续无数据」，避免限速源上所有连接轮流重连。
      * 用相对值是为了适配不同 CDN 的限速档次（夸克单连接几十 KB/s、迅雷更低），绝对下限兜住
      * 「收尾只剩一两路、平均值被自己拉低」的退化情况。命中后只把 [InflightChunk.preempt] 置位，
      * 由 ChunkDownloader 断开连接并从已收字节续传——不丢数据、不退避、不改变对外结果。
@@ -537,6 +538,12 @@ class DownloadManager(
                 if (d.size - d.bytes.get() < PREEMPT_MIN_REMAIN) continue
             }
             if (d.lastBps >= floor) continue
+            if (!SlowConnectionPolicy.shouldReplace(
+                    currentBps = d.lastBps,
+                    idleMs = d.idleMs,
+                    idleThresholdMs = DownloadTuning.preemptMinAgeMs,
+                    peerSpeeds = diag.values.filter { it !== d }.map { it.lastBps }
+                )) continue
             d.preemptCount++
             d.lastPreemptAtMs = now
             d.preempt.set(true)

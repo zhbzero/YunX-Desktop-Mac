@@ -318,3 +318,12 @@ compose.desktop {
         }
     }
 }
+
+// Isolated image preview smoke test. Does not read account data or contact a netdisk.
+tasks.register<JavaExec>("previewSmoke") {
+    group = "verification"
+    description = "Preview locally generated images without a netdisk account"
+    dependsOn("testClasses")
+    mainClass.set("com.yunx.app.ui.resolve.ShareImagePreviewSmoke")
+    classpath = testInProcessClasspath
+}

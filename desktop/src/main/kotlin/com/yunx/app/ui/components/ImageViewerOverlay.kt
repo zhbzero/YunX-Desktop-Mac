@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -19,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -76,7 +78,8 @@ fun ImageViewerOverlay(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     /** 图片直链的请求头（视频图集防盗链）；默认空表 = 原行为 */
-    headers: Map<String, String> = emptyMap()
+    headers: Map<String, String> = emptyMap(),
+    showControls: Boolean = true
 ) {
     val link = url?.trim().orEmpty()
     // ★ 关闭时不能立刻退出组合：留一份「上一次打开的链接」跑完淡出动画，否则关图是硬切。
@@ -87,11 +90,16 @@ fun ImageViewerOverlay(
     if (lastLink.isEmpty()) return
     val shownLink = lastLink
 
+    var failed by remember(shownLink, headers) { mutableStateOf(false) }
+    var retry by remember(shownLink, headers) { mutableStateOf(0) }
     val bitmap by produceState<ImageBitmap?>(
         initialValue = RemoteImageLoader.cached(shownLink, headers),
-        shownLink, headers
+        shownLink, headers, retry
     ) {
+        failed = false
+        value = RemoteImageLoader.cached(shownLink, headers)
         if (value == null) value = RemoteImageLoader.load(shownLink, headers)
+        failed = value == null
     }
 
     // Esc 关闭（注册在本页 BackHandler 之后，故优先于「返回上一页」）；淡出期间已不再拦截 Esc
@@ -191,7 +199,12 @@ fun ImageViewerOverlay(
             val bmp = bitmap
             if (bmp == null) {
                 // 缓存里一般已有（详情页刚展示过）；未命中时等加载完成
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                if (failed) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("图片加载失败", color = Color.White)
+                        TextButton(onClick = { retry++ }) { Text("重试") }
+                    }
+                } else CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             } else {
                 Image(
                     bitmap = bmp,
@@ -213,6 +226,7 @@ fun ImageViewerOverlay(
         }
 
         // 覆盖在图片之上的控件：关闭按钮 + 操作提示
+        if (showControls) {
         IconButton(
             onClick = onDismiss,
             modifier = Modifier
@@ -233,6 +247,7 @@ fun ImageViewerOverlay(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 16.dp)
         )
+        }
     }
     }
 }

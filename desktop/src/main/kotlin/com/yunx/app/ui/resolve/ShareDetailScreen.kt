@@ -144,7 +144,11 @@ fun ShareDetailScreen(
     refreshing: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    Box(modifier = modifier.fillMaxSize()) {
     val pathNames = viewModel.pathNames
+    val previewScopeKey = "${viewModel.sharePlatform}:${session.shareId}:${session.stoken}:${pathNames.toList()}"
+    var galleryFiles by remember(previewScopeKey) { mutableStateOf<List<ShareFile>>(emptyList()) }
+    var previewIndex by remember(previewScopeKey) { mutableStateOf(-1) }
     // 百度 >300MB 限速提示（解析页百度分享下载）
     val baiduSettings = remember { SettingsRepository() }
     var baiduLimitDismissed by remember { mutableStateOf(baiduSettings.baiduLimitHintDismissed) }
@@ -281,14 +285,25 @@ fun ShareDetailScreen(
             }
 
             items(files, key = { it.fid }) { file ->
+                val previewable = viewModel.canPreviewImages && com.yunx.app.data.preview.ShareImagePolicy.isImage(file)
                 ShareFileRow(
                     file = file,
                     modifier = animateItemIfAllowed(),
+                    previewable = previewable,
+                    leadingContent = if (previewable && com.yunx.app.data.preview.ShareImagePolicy.autoThumbnail(file)) {
+                        { ShareImageThumbnail(file, previewScopeKey, viewModel::loadImagePreview) }
+                    } else null,
+                    onDownload = if (previewable && !viewModel.multiSelectMode) {
+                        { viewModel.fetchDownloadLink(file) }
+                    } else null,
                     onClick = {
                         if (viewModel.multiSelectMode) {
                             viewModel.toggleSelect(file)
                         } else if (file.isdir) {
                             viewModel.openFolder(file)
+                        } else if (previewable) {
+                            galleryFiles = files.filter { com.yunx.app.data.preview.ShareImagePolicy.isImage(it) }
+                            previewIndex = galleryFiles.indexOfFirst { it.fid == file.fid }
                         } else {
                             checkBaiduLimit(file) { viewModel.fetchDownloadLink(file) }
                         }
@@ -509,6 +524,17 @@ fun ShareDetailScreen(
             )
         }
     }
+    if (previewIndex >= 0) {
+        ShareImageGallery(
+            files = galleryFiles,
+            selectedIndex = previewIndex,
+            onSelect = { previewIndex = it },
+            onDismiss = { previewIndex = -1 },
+            load = viewModel::loadImagePreview,
+            onDownload = { file -> previewIndex = -1; viewModel.fetchDownloadLink(file) }
+        )
+    }
+    }
 }
 
 /**
@@ -665,6 +691,10 @@ internal fun ShareFileRow(
     selected: Boolean = false,
     /** 是否显示行首复选框（仅多选模式列表传 true；移动/转存等选择器不显示） */
     showCheckbox: Boolean = false,
+    /** 图片行：缩略图与独立下载入口。其他列表默认保持原有行为。 */
+    leadingContent: @Composable (() -> Unit)? = null,
+    previewable: Boolean = false,
+    onDownload: (() -> Unit)? = null,
     /** 文件徽章（文件名旁；GitHub Releases 最新/预发布/草稿、账号 repo Fork/语言） */
     badge: @Composable (() -> Unit)? = null,
     /** 列表项动画等（调用方传入 Modifier.animateItemIfAllowed()） */
@@ -707,7 +737,9 @@ internal fun ShareFileRow(
                 )
                 Spacer(modifier = Modifier.width(4.dp))
             }
-            Surface(
+            if (leadingContent != null) {
+                leadingContent()
+            } else Surface(
                 modifier = Modifier.size(40.dp),
                 shape = CircleShape,
                 color = if (file.isdir) {
@@ -746,10 +778,15 @@ internal fun ShareFileRow(
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = if (file.isdir) "文件夹" else formatSize(file.fsize),
+                    text = if (file.isdir) "文件夹" else formatSize(file.fsize) + if (previewable) " · 点击预览" else "",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+            if (onDownload != null) {
+                IconButton(onClick = onDownload, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Outlined.Download, contentDescription = "下载图片", modifier = Modifier.size(18.dp))
+                }
             }
             if (onSave != null) {
                 IconButton(onClick = onSave, modifier = Modifier.size(36.dp)) {

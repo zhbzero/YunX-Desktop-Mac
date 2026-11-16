@@ -74,10 +74,10 @@ object HttpClients {
         if (http2Enabled) listOf(Protocol.HTTP_2, Protocol.HTTP_1_1)
         else listOf(Protocol.HTTP_1_1)
 
-    /** 构建代理实例；仅在代理主机与端口均有效时返回非 null，否则返回 null（直连） */
-    private fun currentProxy(): Proxy? {
-        val host = proxyHost ?: return null
-        if (proxyPort !in 1..65535) return null
+    /** 显式指定直连，防止 OkHttp 回退到 JVM 的系统 ProxySelector。 */
+    private fun currentProxy(): Proxy {
+        val host = proxyHost ?: return Proxy.NO_PROXY
+        if (proxyPort !in 1..65535) return Proxy.NO_PROXY
         return Proxy(Proxy.Type.HTTP, InetSocketAddress(host, proxyPort))
     }
 
@@ -109,10 +109,7 @@ object HttpClients {
             .protocols(currentProtocols())
             // 诊断模式：记方法/脱敏 URL/状态码/耗时，非 200/206 才带 body 摘要（关着时首行短路，零开销）
             .addInterceptor(DiagnosticNetworkInterceptor())
-            .apply {
-                // 配置了有效代理时注入；否则保持默认直连，行为与改动前完全一致
-                currentProxy()?.let { proxy -> proxy(proxy) }
-            }
+            .proxy(currentProxy())
             .build()
     }
 
@@ -140,10 +137,7 @@ object HttpClients {
             .retryOnConnectionFailure(true)
             // 诊断模式：分片请求也记一行（高频，靠 DiagnosticLog 的每秒行数闸门限流）
             .addInterceptor(DiagnosticNetworkInterceptor())
-            .apply {
-                // 配置了有效代理时注入；否则保持默认直连，行为与改动前完全一致
-                currentProxy()?.let { proxy -> proxy(proxy) }
-            }
+            .proxy(currentProxy())
             .build()
     }
 }
